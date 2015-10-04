@@ -5,9 +5,19 @@ unit DelphiAST.Classes;
 interface
 
 uses
-  Generics.Collections, SimpleParser.Lexer.Types, DelphiAST.Consts;
+  SysUtils, Generics.Collections, SimpleParser.Lexer.Types, DelphiAST.Consts;
 
 type
+  EParserException = class(Exception)
+  strict private
+    FLine, FCol: Integer;
+  public
+    constructor Create(Line, Col: Integer; Msg: string); reintroduce;
+
+    property Line: Integer read FLine;
+    property Col: Integer read FCol;
+  end;
+
   TSyntaxNodeClass = class of TSyntaxNode;
   TSyntaxNode = class
   private
@@ -67,6 +77,15 @@ type
     property Value: string read FValue write FValue;
   end;
 
+  TCommentNode = class(TSyntaxNode)
+  private
+    FText: string;
+  public
+    function Clone: TSyntaxNode; override;
+
+    property Text: string read FText write FText;
+  end;
+
   TExpressionTools = class
   private
     class function CreateNodeWithParentsPosition(NodeType: TSyntaxNodeType; ParentNode: TSyntaxNode): TSyntaxNode;
@@ -78,9 +97,6 @@ type
   end;
 
 implementation
-
-uses
-  SysUtils;
 
 type
   TOperatorKind = (okUnary, okBinary);
@@ -351,16 +367,21 @@ class procedure TExpressionTools.RawNodeListToTree(RawParentNode: TSyntaxNode; R
 var
   PreparedNodeList, ReverseNodeList: TList<TSyntaxNode>;
 begin
-  PreparedNodeList := PrepareExpr(RawNodeList);
   try
-    ReverseNodeList := ExprToReverseNotation(PreparedNodeList);
+    PreparedNodeList := PrepareExpr(RawNodeList);
     try
-      NodeListToTree(ReverseNodeList, NewRoot);
+      ReverseNodeList := ExprToReverseNotation(PreparedNodeList);
+      try
+        NodeListToTree(ReverseNodeList, NewRoot);
+      finally
+        ReverseNodeList.Free;
+      end;
     finally
-      ReverseNodeList.Free;
+      PreparedNodeList.Free;
     end;
-  finally
-    PreparedNodeList.Free;
+  except
+    on E: Exception do
+      raise EParserException.Create(NewRoot.Line, NewRoot.Col, E.Message);
   end;
 end;
 
@@ -475,6 +496,24 @@ begin
   Result := inherited;
 
   TValuedSyntaxNode(Result).Value := Self.Value;
+end;
+
+{ TCommentNode }
+
+function TCommentNode.Clone: TSyntaxNode;
+begin
+  Result := inherited;
+
+  TCommentNode(Result).Text := Self.Text;
+end;
+
+{ EParserException }
+
+constructor EParserException.Create(Line, Col: Integer; Msg: string);
+begin
+  inherited Create(Msg);
+  FLine := Line;
+  FCol := Col;
 end;
 
 end.

@@ -106,6 +106,8 @@ type
     ntShr,
     ntStatement,
     ntStatements,
+    ntStrictPrivate,
+    ntStrictProtected,
     ntSub,
     ntSubrange,
     ntThen,
@@ -126,7 +128,11 @@ type
     ntUses,
     ntWhile,
     ntWith,
-    ntWrite
+    ntWrite,
+
+    ntAnsiComment,
+    ntBorComment,
+    ntSlashesComment
   );
 
   TAttributeName = (
@@ -248,6 +254,8 @@ const
     'shr',
     'statement',
     'statements',
+    'strictprivate', 
+    'strictprotected',
     'sub',
     'subrange',
     'then',
@@ -268,7 +276,11 @@ const
     'uses',
     'while',
     'with',
-    'write'
+    'write',
+
+    'ansicomment',
+    'borlandcomment',
+    'slashescomment'
   );
 
 const

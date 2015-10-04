@@ -9,16 +9,6 @@ uses
   SimpleParser.Lexer.Types, DelphiAST.Classes, DelphiAST.Consts;
 
 type
-  EParserException = class(Exception)
-  strict private
-    FLine, FCol: Integer;
-  public
-    constructor Create(Line, Col: Integer; Msg: string); reintroduce;
-
-    property Line: Integer read FLine;
-    property Col: Integer read FCol;
-  end;
-
   ESyntaxTreeException = class(EParserException)
   strict private
     FSyntaxTree: TSyntaxNode;
@@ -65,8 +55,10 @@ type
     procedure CallInheritedConstantExpression;
     procedure CallInheritedExpression;
     procedure SetCurrentCompoundNodesEndPosition;
+    procedure DoOnComment(Sender: TObject; const Text: string);
   protected
     FStack: TNodeStack;
+    FComments: TObjectList<TCommentNode>;
 
     procedure AccessSpecifier; override;
     procedure AdditiveOperator; override;
@@ -191,7 +183,7 @@ type
     procedure StorageDefault; override;
     procedure StringConst; override;
     procedure StringConstSimple; override;
-    procedure StringType; override;
+    procedure StringStatement; override;
     procedure StructuredType; override;
     procedure SubrangeType; override;
     procedure ThenStatement; override;
@@ -217,6 +209,8 @@ type
     procedure VisibilityProtected; override;
     procedure VisibilityPublic; override;
     procedure VisibilityPublished; override;
+    procedure VisibilityStrictPrivate; override;
+    procedure VisibilityStrictProtected; override;    
     procedure WhileStatement; override;
     procedure WithExpressionList; override;
     procedure WithStatement; override;
@@ -236,6 +230,8 @@ type
     function Run(SourceStream: TStream): TSyntaxNode; reintroduce; overload; virtual;
     class function Run(const FileName: string;
       InterfaceOnly: Boolean = False; IncludeHandler: IIncludeHandler = nil): TSyntaxNode; reintroduce; overload; static;
+
+    property Comments: TObjectList<TCommentNode> read FComments;
   end;
 
 implementation
@@ -860,6 +856,9 @@ constructor TPasSyntaxTreeBuilder.Create;
 begin
   inherited;
   FStack := TNodeStack.Create(Self);
+  FComments := TObjectList<TCommentNode>.Create(True);
+
+  OnComment := DoOnComment;
 end;
 
 procedure TPasSyntaxTreeBuilder.Designator;
@@ -875,6 +874,7 @@ end;
 destructor TPasSyntaxTreeBuilder.Destroy;
 begin
   FStack.Free;
+  FComments.Free;
   inherited;
 end;
 
@@ -1474,6 +1474,25 @@ begin
   inherited;
 end;
 
+procedure TPasSyntaxTreeBuilder.DoOnComment(Sender: TObject; const Text: string);
+var
+  Node: TCommentNode;
+begin
+  case TokenID of
+    ptAnsiComment: Node := TCommentNode.Create(ntAnsiComment);
+    ptBorComment: Node := TCommentNode.Create(ntAnsiComment);
+    ptSlashesComment: Node := TCommentNode.Create(ntSlashesComment);
+  else
+    raise EParserException.Create(Lexer.PosXY.Y, Lexer.PosXY.X, 'Invalid comment type');
+  end;
+
+  Node.Col := Lexer.PosXY.X;
+  Node.Line := Lexer.PosXY.Y;
+  Node.Text := Text;
+
+  FComments.Add(Node);
+end;
+
 procedure TPasSyntaxTreeBuilder.ParserMessage(Sender: TObject;
   const Typ: TMessageEventType; const Msg: string; X, Y: Integer);
 begin
@@ -1821,6 +1840,9 @@ begin
             NodeList.Add(RawStatement.ChildNodes[I]);
           end;
 
+          if NodeList.Count = 0 then
+            raise EParserException.Create(Position.Y, Position.X, 'Illegal expression');
+
           LHS := FStack.AddChild(ntLHS, False);
           LHS.Col  := NodeList[0].Col;
           LHS.Line := NodeList[0].Line;
@@ -1830,6 +1852,9 @@ begin
 
           for I := AssignIdx + 1 to RawStatement.ChildNodes.Count - 1 do
             NodeList.Add(RawStatement.ChildNodes[I]);
+
+          if NodeList.Count = 0 then
+            raise EParserException.Create(Position.Y, Position.X, 'Illegal expression');
 
           RHS := FStack.AddChild(ntRHS, False);
           RHS.Col  := NodeList[0].Col;
@@ -1929,14 +1954,10 @@ begin
   inherited;
 end;
 
-procedure TPasSyntaxTreeBuilder.StringType;
+procedure TPasSyntaxTreeBuilder.StringStatement;
 begin
-  FStack.Push(ntType).SetAttribute(anName, Lexer.Token);
-  try
-    inherited;
-  finally
-    FStack.Pop;
-  end;
+  FStack.AddChild(ntType).SetAttribute(anName, Lexer.Token);
+  inherited;
 end;
 
 procedure TPasSyntaxTreeBuilder.StructuredType;
@@ -2267,9 +2288,31 @@ begin
   end;
 end;
 
+procedure TPasSyntaxTreeBuilder.VisibilityStrictPrivate;
+begin
+  FStack.Push(ntStrictPrivate);
+  try
+    FStack.Peek.SetAttribute(anVisibility, 'true');
+    inherited;
+  finally
+    FStack.Pop;
+  end;
+end;
+
 procedure TPasSyntaxTreeBuilder.VisibilityPrivate;
 begin
   FStack.Push(ntPrivate);
+  try
+    FStack.Peek.SetAttribute(anVisibility, 'true');
+    inherited;
+  finally
+    FStack.Pop;
+  end;
+end;
+
+procedure TPasSyntaxTreeBuilder.VisibilityStrictProtected;
+begin
+  FStack.Push(ntStrictProtected);
   try
     FStack.Peek.SetAttribute(anVisibility, 'true');
     inherited;
@@ -2430,15 +2473,6 @@ function TNodeStack.Push(Typ: TSyntaxNodeType; SetPositionAttributes: Boolean = 
 begin
   Result := FStack.Peek.AddChild(TSyntaxNode.Create(Typ));
   Push(Result, SetPositionAttributes);
-end;
-
-{ EParserException }
-
-constructor EParserException.Create(Line, Col: Integer; Msg: string);
-begin
-  inherited Create(Msg);
-  FLine := Line;
-  FCol := Col;
 end;
 
 { ESyntaxTreeException }

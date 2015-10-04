@@ -208,6 +208,8 @@ type
     function GetUseDefines: Boolean;
     procedure SetUseDefines(const Value: Boolean);
     procedure SetIncludeHandler(IncludeHandler: IIncludeHandler);
+    function GetOnComment: TCommentEvent;
+    procedure SetOnComment(const Value: TCommentEvent);
   protected
     procedure Expected(Sym: TptTokenKind); virtual;
     procedure ExpectedEx(Sym: TptTokenKind); virtual;
@@ -521,6 +523,8 @@ type
     procedure VisibilityProtected; virtual;
     procedure VisibilityPublic; virtual;
     procedure VisibilityPublished; virtual;
+    procedure VisibilityStrictPrivate; virtual;
+    procedure VisibilityStrictProtected; virtual;
     procedure VisibilityUnknown; virtual;
     procedure WhileStatement; virtual;
     procedure WithExpressionList; virtual;
@@ -569,6 +573,7 @@ type
 
     property InterfaceOnly: Boolean read FInterfaceOnly write FInterfaceOnly;
     property Lexer: TmwPasLex read FLexer;
+    property OnComment: TCommentEvent read GetOnComment write SetOnComment;
     property OnMessage: TMessageEvent read FOnMessage write FOnMessage;
     property LastNoJunkPos: Integer read FLastNoJunkPos;
     property LastNoJunkLen: Integer read FLastNoJunkLen;
@@ -1017,6 +1022,11 @@ end;
 function TmwSimplePasPar.GetInRound: Boolean;
 begin
   Result := FInRound > 0;
+end;
+
+function TmwSimplePasPar.GetOnComment: TCommentEvent;
+begin
+  Result := FLexer.OnComment;
 end;
 
 procedure TmwSimplePasPar.SynError(Error: TmwParseError);
@@ -1921,16 +1931,8 @@ procedure TmwSimplePasPar.ReturnType;
 begin
   while TokenID = ptSquareOpen do
     CustomAttribute;
-  case TokenID of
-    ptString:
-      begin
-        StringType;
-      end;
-  else
-    begin
-      TypeID;
-    end;
-  end;
+
+  TypeID;
 end;
 
 procedure TmwSimplePasPar.RoundClose;
@@ -2358,18 +2360,16 @@ end;
 
 procedure TmwSimplePasPar.ExceptBlock;
 begin
-  case ExID of
-    ptOn:
-      begin
-        ExceptionHandlerList;
-        if TokenID = ptElse then
-          ExceptionBlockElseBranch;
-      end;
-  else
-    begin
+  if ExID = ptOn then
+  begin
+    ExceptionHandlerList;
+    if TokenID = ptElse then
+      ExceptionBlockElseBranch;
+  end else
+    if TokenID = ptElse then
+      ExceptionBlockElseBranch
+    else
       StatementList;
-    end;
-  end;
 end;
 
 procedure TmwSimplePasPar.ExceptionHandlerList;
@@ -2729,7 +2729,6 @@ end;
 procedure TmwSimplePasPar.StringStatement;
 begin
   Expected(ptString);
-  Statement;
 end;
 
 procedure TmwSimplePasPar.SetElement;
@@ -2745,6 +2744,11 @@ end;
 procedure TmwSimplePasPar.SetIncludeHandler(IncludeHandler: IIncludeHandler);
 begin
   FLexer.IncludeHandler := IncludeHandler;
+end;
+
+procedure TmwSimplePasPar.SetOnComment(const Value: TCommentEvent);
+begin
+  FLexer.OnComment := Value;
 end;
 
 procedure TmwSimplePasPar.QualifiedIdentifier;
@@ -2903,7 +2907,7 @@ begin
       end;
     ptString:
       begin
-        StringType;
+        StringStatement;
       end;
     ptFunction, ptProcedure:
       AnonymousMethod;
@@ -3730,9 +3734,13 @@ begin
 end;
 
 procedure TmwSimplePasPar.ClassVisibility;
+var
+  IsStrict: boolean;
 begin
-  if TokenID = ptStrict then
-    Expected(ptStrict);
+  IsStrict := ExID = ptStrict;
+  if IsStrict then
+    ExpectedEx(ptStrict);
+      
   while ExID in [ptAutomated, ptPrivate, ptProtected, ptPublic, ptPublished] do
   begin
     Lexer.InitAhead;
@@ -3746,11 +3754,17 @@ begin
           end;
         ptPrivate:
           begin
-            VisibilityPrivate;
+            if IsStrict then
+              VisibilityStrictPrivate
+            else
+              VisibilityPrivate;
           end;
         ptProtected:
           begin
-            VisibilityProtected;
+            if IsStrict then
+              VisibilityStrictProtected
+            else
+              VisibilityProtected;
           end;
         ptPublic:
           begin
@@ -3770,9 +3784,19 @@ begin
   ExpectedEx(ptAutomated);
 end;
 
+procedure TmwSimplePasPar.VisibilityStrictPrivate;
+begin
+  ExpectedEx(ptPrivate);
+end;
+
 procedure TmwSimplePasPar.VisibilityPrivate;
 begin
   ExpectedEx(ptPrivate);
+end;
+
+procedure TmwSimplePasPar.VisibilityStrictProtected;
+begin
+  ExpectedEx(ptProtected);
 end;
 
 procedure TmwSimplePasPar.VisibilityProtected;
@@ -3796,9 +3820,8 @@ end;
 
 procedure TmwSimplePasPar.ClassMemberList;
 begin
-  while TokenID in [ptClass, ptConstructor, ptDestructor, ptFunction,
-    ptIdentifier, ptProcedure, ptProperty,
-    ptType, ptSquareOpen, ptVar, ptConst, ptStrict, ptCase] do
+  while (TokenID in [ptClass, ptConstructor, ptDestructor, ptFunction,
+    ptIdentifier, ptProcedure, ptProperty, ptType, ptSquareOpen, ptVar, ptConst, ptCase]) or (ExID = ptStrict) do
   begin
     ClassVisibility;
 
@@ -4472,7 +4495,7 @@ begin
       end;
     ptString:
       begin
-        StringType;
+        TypeId;
       end;
   else
     begin
@@ -5212,6 +5235,7 @@ begin
           ptString:
             begin
               StringStatement;
+              Statement;
             end;
         else
           StringConst;
@@ -5490,11 +5514,11 @@ procedure TmwSimplePasPar.ImplementsSpecifier;
 begin
   ExpectedEx(ptImplements);
 
-  TypeSimple;
+  TypeId;
   while (TokenID = ptComma) do
   begin
     NextToken;
-    TypeSimple;
+    TypeId;
   end;
 end;
 
