@@ -99,6 +99,7 @@ type
     ntRecordConstraint,
     ntRepeat,
     ntRequires,
+    ntResolutionClause,
     ntResourceString,
     ntReturnType,
     ntRHS,
@@ -150,7 +151,8 @@ type
     anMethodBinding,
     anReintroduce,
     anOverload,
-    anAbstract
+    anAbstract,
+    anInline
   );
 
 const
@@ -250,6 +252,7 @@ const
     'recordconstraint',
     'repeat',
     'requires',
+    'resolutionclause',
     'resourcestring',
     'returntype',
     'rhs',
@@ -301,7 +304,8 @@ const
     'methodbinding',
     'reintroduce',
     'overload',
-    'abstract'
+    'abstract',
+    'inline'
   );
 
 implementation
